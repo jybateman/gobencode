@@ -2,6 +2,7 @@ package bencode
 
 import (
 	"bytes"
+	"errors"
 	"strconv"
 )
 
@@ -10,51 +11,85 @@ type decode struct {
 }
 
 // TODO error check
-func (d *decode) decodeString() string {
-	ns, _ := d.r.ReadBytes(':')
-	i, _ := strconv.Atoi(string(ns[:len(ns)-1]))
+func (d *decode) decodeString() (string, error) {
+	ns, err := d.r.ReadBytes(':')
+	if err != nil {
+		return "", err
+	}
+	i, err := strconv.Atoi(string(ns[:len(ns)-1]))
+	if err != nil {
+		return "", err
+	}
 	key := make([]byte, i)
 	d.r.Read(key)	
-	return string(key)
+	return string(key), nil
 }
 
-func (d *decode) decodeInt() int {
-	n, _ := d.r.ReadBytes('e')
-	i, _ := strconv.Atoi(string(n[:len(n)-1]))
-	return i
+func (d *decode) decodeInt() (int, error) {
+	n, err := d.r.ReadBytes('e')
+	if err != nil {
+		return 0, err
+	}
+	i, err := strconv.Atoi(string(n[:len(n)-1]))
+	if err != nil {
+		return 0, err
+	}
+	return i, nil
 }
 
-func (d *decode) decodeList() []interface{} {
+func (d *decode) decodeList() ([]interface{}, error) {
 	var l []interface{}
 	for {
-		t, _ := d.r.ReadByte()
-		e := d.getType(t)
+		t, err := d.r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		e, err := d.getType(t)
+		if err != nil {
+			return nil, err
+		}
 		l = append(l, e)
-		t, _ = d.r.ReadByte()
+		t, err = d.r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
 		if t == 'e' {
 			break
 		}
 		d.r.UnreadByte()
 	}
-	return l
+	return l, nil
 }
 
-func (d *decode) decodeDict() map[string]interface{} {
+func (d *decode) decodeDict() (map[string]interface{}, error) {
 	dict := make(map[string]interface{})
 	for {
-		key := d.decodeString()
-		t, _ := d.r.ReadByte()
-		dict[string(key)] = d.getType(t)
-		t, _ = d.r.ReadByte()
+		key, err := d.decodeString()
+		if err != nil {
+			return nil, err
+		}
+		t, err := d.r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		v, err := d.getType(t)
+		if err != nil {
+			return nil, err
+		}		
+		dict[string(key)] = v
+		t, err = d.r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
 		if t == 'e' {
 			break
 		}
 		d.r.UnreadByte()
 	}
-	return dict
+	return dict, nil
 }
 
-func (d *decode) getType(t byte) interface{} {
+func (d *decode) getType(t byte) (interface{}, error) {
 	switch {
 	case t == 'd':
 		return d.decodeDict()
@@ -66,10 +101,10 @@ func (d *decode) getType(t byte) interface{} {
 		d.r.UnreadByte()
 		return d.decodeString()
 	}
-	return nil
+	return nil, errors.New("Type does not exist!")
 }
 
-func Decode(dta string) map[string]interface{}{
+func Decode(dta string) (map[string]interface{}, error) {
 	var d decode
 
 	d.r = bytes.NewBufferString(dta)
@@ -77,5 +112,5 @@ func Decode(dta string) map[string]interface{}{
 	if dct == 'd' {
 		return d.decodeDict()
 	}
-	return nil
+	return nil, nil
 }
